@@ -1,0 +1,15 @@
+[package]
+name = "ed448-verifier"
+description = "A naive implementation of Ed448 verifier"
+authors = ["Kikuo Emoto <kemoto@codemonger.io>"]
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+digest = "0.10"
+ed448-goldilocks = "0.9"
+ed448-signature = { git = "https://github.com/RustCrypto/signatures.git" }
+sha3 = "0.10"
+
+[dev-dependencies]
+hex-literal = "0.4"

@@ -12,6 +12,7 @@
 //! Most of the idea was taken from [`ed25519-dalek`](https://docs.rs/ed25519-dalek/latest/ed25519_dalek/index.html).
 
 pub mod constants;
+pub mod digest;
 pub mod signature;
 pub mod verifying;
 

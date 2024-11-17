@@ -1,14 +1,14 @@
 //! Ed448 verifier.
 
-use digest::{ExtendableOutput, Update, XofReader};
+use digest::{crypto_common::generic_array::typenum::U114, Digest};
 use ed448_goldilocks::{
     curve::edwards::{CompressedEdwardsY, ExtendedPoint},
     Scalar,
 };
 use ed448_signature::signature::Verifier;
-use sha3::Shake256;
 
 use crate::constants::{PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH};
+use crate::digest::Shake256U114;
 use crate::signature::{InternalSignature, SignatureError};
 
 /// Ed448 public key.
@@ -28,16 +28,16 @@ impl VerifyingKey {
 
     // TODO: implement the prehashed variant
     #[allow(non_snake_case)]
-    pub(crate) fn raw_verify<CtxXof>(
+    pub(crate) fn raw_verify<CtxDigest>(
         &self,
         context: Option<&[u8]>,
         message: &[u8],
         signature: &InternalSignature,
     ) -> Result<(), SignatureError>
     where
-        CtxXof: ExtendableOutput + Update + Default,
+        CtxDigest: Digest<OutputSize = U114>,
     {
-        let expected_R = self.recompute_R::<CtxXof>(context, signature, message);
+        let expected_R = self.recompute_R::<CtxDigest>(context, signature, message);
         if expected_R.0 == signature.R.0 {
             Ok(())
         } else {
@@ -47,17 +47,16 @@ impl VerifyingKey {
 
     // TODO: implement the prehashed variant
     #[allow(non_snake_case)]
-    fn recompute_R<CtxXof>(
+    fn recompute_R<CtxDigest>(
         &self,
         context: Option<&[u8]>,
         signature: &InternalSignature,
         M: &[u8],
     ) -> CompressedEdwardsY
     where
-        // TODO: implement Digest of output size = 114 for Shake256?
-        CtxXof: ExtendableOutput + Update + Default,
+        CtxDigest: Digest<OutputSize = U114>,
     {
-        let k = Self::compute_challenge::<CtxXof>(context, &signature.R, &self.compressed, M);
+        let k = Self::compute_challenge::<CtxDigest>(context, &signature.R, &self.compressed, M);
         // calculates R = -[k]A + [s]B
         // Step 3 at https://datatracker.ietf.org/doc/html/rfc8032#section-5.2.7
         let minus_A: ExtendedPoint = -self.point;
@@ -68,17 +67,16 @@ impl VerifyingKey {
 
     // TODO: implement the prehashed variant
     #[allow(non_snake_case)]
-    fn compute_challenge<CtxXof>(
+    fn compute_challenge<CtxDigest>(
         context: Option<&[u8]>,
         R: &CompressedEdwardsY,
         A: &CompressedEdwardsY,
         M: &[u8],
     ) -> Scalar
     where
-        // TODO: implement Digest of output size = 114 for Shake256?
-        CtxXof: ExtendableOutput + Update + Default,
+        CtxDigest: Digest<OutputSize = U114>,
     {
-        let mut h = CtxXof::default();
+        let mut h = CtxDigest::new();
         // https://datatracker.ietf.org/doc/html/rfc8032#section-2
         // dom4(x, y) = "SigEd448" || octet(x) || octet(OLEN(y)) || y
         // where x = 0, and y = context
@@ -96,19 +94,25 @@ impl VerifyingKey {
         h.update(M);
 
         let mut hash = [0u8; SIGNATURE_LENGTH];
-        h.finalize_xof().read(&mut hash);
+        hash.copy_from_slice(&h.finalize().as_slice());
 
         Scalar::from_bytes_mod_order_wide(&hash)
     }
 }
 
+// TODO: should this be optional for some people who would want to use other
+// function implementations?
 impl Verifier<ed448_signature::Signature> for VerifyingKey {
     fn verify(
         &self,
         msg: &[u8],
         signature: &ed448_signature::Signature,
     ) -> Result<(), SignatureError> {
-        self.raw_verify::<Shake256>(None, msg, &InternalSignature::try_from(signature)?)
+        self.raw_verify::<Shake256U114>(
+            None,
+            msg,
+            &InternalSignature::try_from(signature)?,
+        )
     }
 }
 
@@ -131,7 +135,9 @@ mod test {
 
     use super::*;
 
+    // test vectors are taken from
     // https://datatracker.ietf.org/doc/html/rfc8032#section-7.4
+
     #[test]
     #[allow(non_snake_case)]
     fn raw_verify_blank() {
@@ -153,10 +159,9 @@ mod test {
             b61149f05a7363268c71d95808ff2e65
             2600
         ")).unwrap();
-        assert!(public_key.raw_verify::<Shake256>(context, &message, &signature).is_ok());
+        assert!(public_key.raw_verify::<Shake256U114>(context, &message, &signature).is_ok());
     }
 
-    // https://datatracker.ietf.org/doc/html/rfc8032#section-7.4
     #[test]
     fn raw_verify_1_octet() {
         let public_key = VerifyingKey::from_bytes(hex!("
@@ -177,10 +182,9 @@ mod test {
             f3348ab21aa4adafd1d234441cf807c0
             3a00
         ")).unwrap();
-        assert!(public_key.raw_verify::<Shake256>(context, &message, &signature).is_ok());
+        assert!(public_key.raw_verify::<Shake256U114>(context, &message, &signature).is_ok());
     }
 
-    // https://datatracker.ietf.org/doc/html/rfc8032#section-7.4
     #[test]
     fn raw_verify_1_octet_with_context() {
         let public_key = VerifyingKey::from_bytes(hex!("
@@ -201,10 +205,9 @@ mod test {
             5428407e85dcbc98a49155c13764e66c
             3c00
         ")).unwrap();
-        assert!(public_key.raw_verify::<Shake256>(context, &message, &signature).is_ok());
+        assert!(public_key.raw_verify::<Shake256U114>(context, &message, &signature).is_ok());
     }
 
-    // https://datatracker.ietf.org/doc/html/rfc8032#section-7.4
     #[test]
     fn raw_verify_11_octets() {
         let public_key = VerifyingKey::from_bytes(hex!("
@@ -225,10 +228,9 @@ mod test {
             028961c9bf8ffd973fe5d5c206492b14
             0e00
         ")).unwrap();
-        assert!(public_key.raw_verify::<Shake256>(context, &message, &signature).is_ok());
+        assert!(public_key.raw_verify::<Shake256U114>(context, &message, &signature).is_ok());
     }
 
-    // https://datatracker.ietf.org/doc/html/rfc8032#section-7.4
     #[test]
     fn raw_verify_12_octets() {
         let public_key = VerifyingKey::from_bytes(hex!("
@@ -249,10 +251,9 @@ mod test {
             e72003cbae6d6b8b827e4e6c143064ff
             3c00
         ")).unwrap();
-        assert!(public_key.raw_verify::<Shake256>(context, &message, &signature).is_ok());
+        assert!(public_key.raw_verify::<Shake256U114>(context, &message, &signature).is_ok());
     }
 
-    // https://datatracker.ietf.org/doc/html/rfc8032#section-7.4
     #[test]
     fn raw_verify_13_octets() {
         let public_key = VerifyingKey::from_bytes(hex!("
@@ -273,10 +274,9 @@ mod test {
             6b4e7e0ba5519234d047155ac727a105
             3100
         ")).unwrap();
-        assert!(public_key.raw_verify::<Shake256>(context, &message, &signature).is_ok());
+        assert!(public_key.raw_verify::<Shake256U114>(context, &message, &signature).is_ok());
     }
 
-    // https://datatracker.ietf.org/doc/html/rfc8032#section-7.4
     #[test]
     fn raw_verify_64_octets() {
         let public_key = VerifyingKey::from_bytes(hex!("
@@ -302,10 +302,9 @@ mod test {
             5f30e88e36ec2703b349ca229c267083
             3900
         ")).unwrap();
-        assert!(public_key.raw_verify::<Shake256>(context, &message, &signature).is_ok());
+        assert!(public_key.raw_verify::<Shake256U114>(context, &message, &signature).is_ok());
     }
 
-    // https://datatracker.ietf.org/doc/html/rfc8032#section-7.4
     #[test]
     fn raw_verify_256_octets() {
         let public_key = VerifyingKey::from_bytes(hex!("
@@ -343,10 +342,9 @@ mod test {
             0987fd08527c1a8e80d5823e65cafe2a
             3d00
         ")).unwrap();
-        assert!(public_key.raw_verify::<Shake256>(context, &message, &signature).is_ok());
+        assert!(public_key.raw_verify::<Shake256U114>(context, &message, &signature).is_ok());
     }
 
-    // https://datatracker.ietf.org/doc/html/rfc8032#section-7.4
     #[test]
     fn raw_verify_1023_octets() {
         let public_key = VerifyingKey::from_bytes(hex!("
@@ -432,6 +430,6 @@ mod test {
             3603ce30d8bb761785dc30dbc320869e
             1a00
         ")).unwrap();
-        assert!(public_key.raw_verify::<Shake256>(context, &message, &signature).is_ok());
+        assert!(public_key.raw_verify::<Shake256U114>(context, &message, &signature).is_ok());
     }
 }

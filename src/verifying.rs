@@ -1,14 +1,20 @@
 //! Ed448 verifier.
 
 use digest::{crypto_common::generic_array::typenum::U114, Digest};
+#[cfg(feature = "digest")]
+use digest::crypto_common::generic_array::typenum::U64;
 use ed448_goldilocks::{
     curve::edwards::{CompressedEdwardsY, ExtendedPoint},
     Scalar,
 };
 use signature::Verifier;
+#[cfg(feature = "digest")]
+use signature::DigestVerifier;
 
 use crate::constants::{PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH};
 use crate::digest::Shake256U114;
+#[cfg(feature = "digest")]
+use crate::digest::Shake256U64;
 use crate::signature::{Signature, SignatureError};
 
 /// Ed448 public key.
@@ -26,7 +32,6 @@ impl VerifyingKey {
         Ok(VerifyingKey { compressed, point })
     }
 
-    // TODO: implement the prehashed variant
     #[allow(non_snake_case)]
     pub(crate) fn raw_verify<CtxDigest>(
         &self,
@@ -41,7 +46,7 @@ impl VerifyingKey {
             // too long context
             return Err(SignatureError::new());
         }
-        let expected_R = self.recompute_R::<CtxDigest>(context, signature, message);
+        let expected_R = self.recompute_R::<CtxDigest>(false, context, signature, message);
         if expected_R.0 == signature.R.0 {
             Ok(())
         } else {
@@ -49,10 +54,35 @@ impl VerifyingKey {
         }
     }
 
-    // TODO: implement the prehashed variant
+    #[cfg(feature = "digest")]
+    #[allow(non_snake_case)]
+    pub(crate) fn raw_verify_prehashed<CtxDigest, MsgDigest>(
+        &self,
+        context: Option<&[u8]>,
+        prehashed_message: MsgDigest,
+        signature: &Signature,
+    ) -> Result<(), SignatureError>
+    where
+        CtxDigest: Digest<OutputSize = U114>,
+        MsgDigest: Digest<OutputSize = U64>,
+    {
+        if context.is_some_and(|c| c.len() > 255) {
+            // too long context
+            return Err(SignatureError::new());
+        }
+        let message = prehashed_message.finalize();
+        let expected_R = self.recompute_R::<CtxDigest>(true, context, signature, &message);
+        if expected_R.0 == signature.R.0 {
+            Ok(())
+        } else {
+            Err(SignatureError::new())
+        }
+    }
+
     #[allow(non_snake_case)]
     fn recompute_R<CtxDigest>(
         &self,
+        prehashed: bool,
         context: Option<&[u8]>,
         signature: &Signature,
         M: &[u8],
@@ -60,7 +90,13 @@ impl VerifyingKey {
     where
         CtxDigest: Digest<OutputSize = U114>,
     {
-        let k = Self::compute_challenge::<CtxDigest>(context, &signature.R, &self.compressed, M);
+        let k = Self::compute_challenge::<CtxDigest>(
+            prehashed,
+            context,
+            &signature.R,
+            &self.compressed,
+            M,
+        );
         // calculates R = -[k]A + [s]B
         // Step 3 at https://datatracker.ietf.org/doc/html/rfc8032#section-5.2.7
         let minus_A: ExtendedPoint = -self.point;
@@ -69,9 +105,9 @@ impl VerifyingKey {
         (k_a + s_B).compress()
     }
 
-    // TODO: implement the prehashed variant
     #[allow(non_snake_case)]
     fn compute_challenge<CtxDigest>(
+        prehashed: bool,
         context: Option<&[u8]>,
         R: &CompressedEdwardsY,
         A: &CompressedEdwardsY,
@@ -83,9 +119,9 @@ impl VerifyingKey {
         let mut h = CtxDigest::new();
         // https://datatracker.ietf.org/doc/html/rfc8032#section-2
         // dom4(x, y) = "SigEd448" || octet(x) || octet(OLEN(y)) || y
-        // where x = 0, and y = context
+        // where x = 0|1, and y = context
         h.update(b"SigEd448");
-        h.update(&[0u8]);
+        h.update(&[if prehashed { 1 } else { 0 }]);
         if let Some(context) = context {
             h.update(&[context.len() as u8]);
             h.update(context);
@@ -109,6 +145,17 @@ impl VerifyingKey {
 impl Verifier<Signature> for VerifyingKey {
     fn verify(&self, msg: &[u8], signature: &Signature) -> Result<(), SignatureError> {
         self.raw_verify::<Shake256U114>(None, msg, signature)
+    }
+}
+
+#[cfg(feature = "digest")]
+impl DigestVerifier<Shake256U64, Signature> for VerifyingKey {
+    fn verify_digest(
+        &self,
+        digest: Shake256U64,
+        signature: &Signature,
+    ) -> Result<(), SignatureError> {
+        self.raw_verify_prehashed::<Shake256U114, Shake256U64>(None, digest, signature)
     }
 }
 
@@ -427,5 +474,61 @@ mod test {
             1a00
         ")).unwrap();
         assert!(public_key.raw_verify::<Shake256U114>(context, &message, &signature).is_ok());
+    }
+
+    #[cfg(feature = "digest")]
+    #[test]
+    fn raw_verify_prehashed_abc() {
+        let public_key = VerifyingKey::from_bytes(hex!("
+            259b71c19f83ef77a7abd26524cbdb31
+            61b590a48f7d17de3ee0ba9c52beb743
+            c09428a131d6b1b57303d90d8132c276
+            d5ed3d5d01c0f53880
+        ")).unwrap();
+        let context = None;
+        let message = hex!("616263");
+        let signature = Signature::from_bytes(&hex!("
+            822f6901f7480f3d5f562c592994d969
+            3602875614483256505600bbc281ae38
+            1f54d6bce2ea911574932f52a4e6cadd
+            78769375ec3ffd1b801a0d9b3f4030cd
+            433964b6457ea39476511214f97469b5
+            7dd32dbc560a9a94d00bff07620464a3
+            ad203df7dc7ce360c3cd3696d9d9fab9
+            0f00
+        ")).unwrap();
+        assert!(public_key.raw_verify_prehashed::<Shake256U114, _>(
+            context,
+            Shake256U64::new_with_prefix(&message),
+            &signature,
+        ).is_ok());
+    }
+
+    #[cfg(feature = "digest")]
+    #[test]
+    fn raw_verify_prehashed_abc_with_context() {
+        let public_key = VerifyingKey::from_bytes(hex!("
+            259b71c19f83ef77a7abd26524cbdb31
+            61b590a48f7d17de3ee0ba9c52beb743
+            c09428a131d6b1b57303d90d8132c276
+            d5ed3d5d01c0f53880
+        ")).unwrap();
+        let context = Some(&hex!("666f6f")[..]);
+        let message = hex!("616263");
+        let signature = Signature::from_bytes(&hex!("
+            c32299d46ec8ff02b54540982814dce9
+            a05812f81962b649d528095916a2aa48
+            1065b1580423ef927ecf0af5888f90da
+            0f6a9a85ad5dc3f280d91224ba9911a3
+            653d00e484e2ce232521481c8658df30
+            4bb7745a73514cdb9bf3e15784ab7128
+            4f8d0704a608c54a6b62d97beb511d13
+            2100
+        ")).unwrap();
+        assert!(public_key.raw_verify_prehashed::<Shake256U114, _>(
+            context,
+            Shake256U64::new_with_prefix(&message),
+            &signature,
+        ).is_ok());
     }
 }

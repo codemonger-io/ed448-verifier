@@ -5,6 +5,10 @@ authors = ["Kikuo Emoto <kemoto@codemonger.io>"]
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+digest = ["signature/digest"]
+
 [dependencies]
 digest = "0.10"
 ed448-goldilocks = "0.9"

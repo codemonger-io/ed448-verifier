@@ -9,7 +9,11 @@
 //! with an implementation of [`signature::Verifier`](https://docs.rs/signature/latest/signature/trait.Verifier.html).
 //! [`VerifyingKey`].
 //!
-//! Most of the idea was taken from [`ed25519-dalek`](https://docs.rs/ed25519-dalek/latest/ed25519_dalek/index.html).
+//! Most of the design was taken from [`ed25519-dalek`](https://docs.rs/ed25519-dalek/latest/ed25519_dalek/index.html).
+//!
+//! ## Feature flags
+//!
+//! - `digest`: Implements [`signature::DigestVerifier`](https://docs.rs/signature/latest/signature/trait.DigestVerifier.html) for [`VerifyingKey`]
 
 pub mod constants;
 pub mod digest;

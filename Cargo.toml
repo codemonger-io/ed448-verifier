@@ -8,8 +8,12 @@ edition = "2021"
 [dependencies]
 digest = "0.10"
 ed448-goldilocks = "0.9"
-ed448-signature = { git = "https://github.com/RustCrypto/signatures.git" }
+# ed448-signature depends on signature v2.3 which is not released yet.
+# and signature v2.3 depends on digest v0.11 which is neither released
+# and has a different package structure from v0.10.
+# ed448-signature = { git = "https://github.com/RustCrypto/signatures.git" }
 sha3 = "0.10"
+signature = "2.2"
 
 [dev-dependencies]
 hex-literal = "0.4"

@@ -5,11 +5,11 @@ use ed448_goldilocks::{
     curve::edwards::{CompressedEdwardsY, ExtendedPoint},
     Scalar,
 };
-use ed448_signature::signature::Verifier;
+use signature::Verifier;
 
 use crate::constants::{PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH};
 use crate::digest::Shake256U114;
-use crate::signature::{InternalSignature, SignatureError};
+use crate::signature::{Signature, SignatureError};
 
 /// Ed448 public key.
 pub struct VerifyingKey {
@@ -32,11 +32,15 @@ impl VerifyingKey {
         &self,
         context: Option<&[u8]>,
         message: &[u8],
-        signature: &InternalSignature,
+        signature: &Signature,
     ) -> Result<(), SignatureError>
     where
         CtxDigest: Digest<OutputSize = U114>,
     {
+        if context.is_some_and(|c| c.len() > 255) {
+            // too long context
+            return Err(SignatureError::new());
+        }
         let expected_R = self.recompute_R::<CtxDigest>(context, signature, message);
         if expected_R.0 == signature.R.0 {
             Ok(())
@@ -50,7 +54,7 @@ impl VerifyingKey {
     fn recompute_R<CtxDigest>(
         &self,
         context: Option<&[u8]>,
-        signature: &InternalSignature,
+        signature: &Signature,
         M: &[u8],
     ) -> CompressedEdwardsY
     where
@@ -102,17 +106,9 @@ impl VerifyingKey {
 
 // TODO: should this be optional for some people who would want to use other
 // function implementations?
-impl Verifier<ed448_signature::Signature> for VerifyingKey {
-    fn verify(
-        &self,
-        msg: &[u8],
-        signature: &ed448_signature::Signature,
-    ) -> Result<(), SignatureError> {
-        self.raw_verify::<Shake256U114>(
-            None,
-            msg,
-            &InternalSignature::try_from(signature)?,
-        )
+impl Verifier<Signature> for VerifyingKey {
+    fn verify(&self, msg: &[u8], signature: &Signature) -> Result<(), SignatureError> {
+        self.raw_verify::<Shake256U114>(None, msg, signature)
     }
 }
 
@@ -149,7 +145,7 @@ mod test {
         ")).unwrap();
         let context = None;
         let message = hex!("");
-        let signature = InternalSignature::from_bytes(&hex!("
+        let signature = Signature::from_bytes(&hex!("
             533a37f6bbe457251f023c0d88f976ae
             2dfb504a843e34d2074fd823d41a591f
             2b233f034f628281f2fd7a22ddd47d78
@@ -172,7 +168,7 @@ mod test {
         ")).unwrap();
         let context = None;
         let message = hex!("03");
-        let signature = InternalSignature::from_bytes(&hex!("
+        let signature = Signature::from_bytes(&hex!("
             26b8f91727bd62897af15e41eb43c377
             efb9c610d48f2335cb0bd0087810f435
             2541b143c4b981b7e18f62de8ccdf633
@@ -195,7 +191,7 @@ mod test {
         ")).unwrap();
         let context = Some(&hex!("666f6f")[..]);
         let message = hex!("03");
-        let signature = InternalSignature::from_bytes(&hex!("
+        let signature = Signature::from_bytes(&hex!("
             d4f8f6131770dd46f40867d6fd5d5055
             de43541f8c5e35abbcd001b32a89f7d2
             151f7647f11d8ca2ae279fb842d60721
@@ -218,7 +214,7 @@ mod test {
         ")).unwrap();
         let context = None;
         let message = hex!("0c3e544074ec63b0265e0c");
-        let signature = InternalSignature::from_bytes(&hex!("
+        let signature = Signature::from_bytes(&hex!("
             1f0a8888ce25e8d458a21130879b840a
             9089d999aaba039eaf3e3afa090a09d3
             89dba82c4ff2ae8ac5cdfb7c55e94d5d
@@ -241,7 +237,7 @@ mod test {
         ")).unwrap();
         let context = None;
         let message = hex!("64a65f3cdedcdd66811e2915");
-        let signature = InternalSignature::from_bytes(&hex!("
+        let signature = Signature::from_bytes(&hex!("
             7eeeab7c4e50fb799b418ee5e3197ff6
             bf15d43a14c34389b59dd1a7b1b85b4a
             e90438aca634bea45e3a2695f1270f07
@@ -264,7 +260,7 @@ mod test {
         ")).unwrap();
         let context = None;
         let message = hex!("64a65f3cdedcdd66811e2915e7");
-        let signature = InternalSignature::from_bytes(&hex!("
+        let signature = Signature::from_bytes(&hex!("
             6a12066f55331b6c22acd5d5bfc5d712
             28fbda80ae8dec26bdd306743c5027cb
             4890810c162c027468675ecf645a8317
@@ -292,7 +288,7 @@ mod test {
             512204a30c17d1f50b5079631f64eb31
             12182da3005835461113718d1a5ef944
         ");
-        let signature = InternalSignature::from_bytes(&hex!("
+        let signature = Signature::from_bytes(&hex!("
             554bc2480860b49eab8532d2a533b7d5
             78ef473eeb58c98bb2d0e1ce488a98b1
             8dfde9b9b90775e67f47d4a1c3482058
@@ -332,7 +328,7 @@ mod test {
             a9981b51878fd6fc110624dcbcde0bf7
             a69ccce38fabdf86f3bef6044819de11
         ");
-        let signature = InternalSignature::from_bytes(&hex!("
+        let signature = Signature::from_bytes(&hex!("
             c650ddbb0601c19ca11439e1640dd931
             f43c518ea5bea70d3dcde5f4191fe53f
             00cf966546b72bcc7d58be2b9badef28
@@ -420,7 +416,7 @@ mod test {
             568186f7e569d2ff0f9e745d0487dd2e
             b997cafc5abf9dd102e62ff66cba87
         ");
-        let signature = InternalSignature::from_bytes(&hex!("
+        let signature = Signature::from_bytes(&hex!("
             e301345a41a39a4d72fff8df69c98075
             a0cc082b802fc9b2b6bc503f926b65bd
             df7f4c8f1cb49f6396afc8a70abe6d8a

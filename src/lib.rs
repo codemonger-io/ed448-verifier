@@ -16,4 +16,5 @@ pub mod digest;
 pub mod signature;
 pub mod verifying;
 
+pub use signature::Signature;
 pub use verifying::VerifyingKey;

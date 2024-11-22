@@ -66,9 +66,7 @@ impl VerifyingKey {
     #[inline]
     pub(crate) fn from_owned_bytes(bytes: [u8; PUBLIC_KEY_LENGTH]) -> Result<Self, SignatureError> {
         let compressed = CompressedEdwardsY(bytes);
-        let point = compressed
-            .decompress()
-            .ok_or_else(SignatureError::new)?;
+        let point = compressed.decompress().ok_or_else(SignatureError::new)?;
         Ok(VerifyingKey { compressed, point })
     }
 

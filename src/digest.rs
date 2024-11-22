@@ -2,12 +2,13 @@
 //! [`Digest`](https://docs.rs/digest/latest/digest/trait.Digest.html) with
 //! a fixed output size.
 //!
-//! There are the following type aliases for convenience:
+//! Unless you disable the "sha3" feature, the following type aliases are
+//! defined for your convenience:
 //! - [`Shake256U114`]: core hash function for Ed448
 //! - [`Shake256U64`]: function for prehash calculation for Ed448
 
 use digest::{
-    crypto_common::generic_array::{ArrayLength, typenum::{U114, U64}},
+    crypto_common::generic_array::ArrayLength,
     Digest,
     ExtendableOutput,
     FixedOutput,
@@ -18,6 +19,8 @@ use digest::{
     Update,
     XofReader,
 };
+#[cfg(feature = "sha3")]
+use digest::crypto_common::generic_array::typenum::{U114, U64};
 use std::marker::PhantomData;
 
 /// Adapter for an extendable output function (XOF) to make it a
@@ -162,12 +165,14 @@ where
 }
 
 /// Digest for Ed448.
+#[cfg(feature = "sha3")]
 pub type Shake256U114 = XofDigest<sha3::Shake256, U114>;
 
 /// Prehash function for Ed448.
+#[cfg(feature = "sha3")]
 pub type Shake256U64 = XofDigest<sha3::Shake256, U64>;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sha3"))]
 mod test {
     use super::*;
 

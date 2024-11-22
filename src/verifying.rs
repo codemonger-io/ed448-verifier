@@ -7,17 +7,26 @@ use ed448_goldilocks::{
     curve::edwards::{CompressedEdwardsY, ExtendedPoint},
     Scalar,
 };
+#[cfg(feature = "sha3")]
 use signature::Verifier;
-#[cfg(feature = "digest")]
+#[cfg(all(feature = "sha3", feature = "digest"))]
 use signature::DigestVerifier;
 
 use crate::constants::{PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH};
+#[cfg(feature = "sha3")]
 use crate::digest::Shake256U114;
-#[cfg(feature = "digest")]
+#[cfg(all(feature = "sha3", feature = "digest"))]
 use crate::digest::Shake256U64;
 use crate::signature::{Signature, SignatureError};
 
 /// Ed448 public key.
+///
+/// Optionally implements
+/// - [`signature::Verifier`](https://docs.rs/signature/latest/signature/trait.Verifier.html):
+///   if the "sha3" feature is enabled (default).
+/// - [`signature::DigestVerifier`](https://docs.rs/signature/latest/signature/trait.DigestVerifier.html):
+///   if the "sha3" and "digest" features are
+///   enabled.
 pub struct VerifyingKey {
     pub(crate) compressed: CompressedEdwardsY,
     pub(crate) point: ExtendedPoint,
@@ -32,8 +41,12 @@ impl VerifyingKey {
         Ok(VerifyingKey { compressed, point })
     }
 
+    /// Verifies a given signature for a specified message.
+    ///
+    /// As this function is intended to be internally used, please use
+    /// [`VerifyingKey::verify`] instead unless you disable the "sha3" feature.
     #[allow(non_snake_case)]
-    pub(crate) fn raw_verify<CtxDigest>(
+    pub fn raw_verify<CtxDigest>(
         &self,
         context: Option<&[u8]>,
         message: &[u8],
@@ -54,6 +67,11 @@ impl VerifyingKey {
         }
     }
 
+    /// Verifies a given signature for a specified prehashed message.
+    ///
+    /// As this function is intended to be internally used, please use
+    /// [`VerifyingKey::verify_digest`] instead unless you disable the "sha3"
+    /// feature.
     #[cfg(feature = "digest")]
     #[allow(non_snake_case)]
     pub(crate) fn raw_verify_prehashed<CtxDigest, MsgDigest>(
@@ -140,15 +158,14 @@ impl VerifyingKey {
     }
 }
 
-// TODO: should this be optional for some people who would want to use other
-// function implementations?
+#[cfg(feature = "sha3")]
 impl Verifier<Signature> for VerifyingKey {
     fn verify(&self, msg: &[u8], signature: &Signature) -> Result<(), SignatureError> {
         self.raw_verify::<Shake256U114>(None, msg, signature)
     }
 }
 
-#[cfg(feature = "digest")]
+#[cfg(all(feature = "sha3", feature = "digest"))]
 impl DigestVerifier<Shake256U64, Signature> for VerifyingKey {
     fn verify_digest(
         &self,
@@ -162,6 +179,7 @@ impl DigestVerifier<Shake256U64, Signature> for VerifyingKey {
 impl TryFrom<&[u8]> for VerifyingKey {
     type Error = SignatureError;
 
+    #[inline]
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         if bytes.len() != PUBLIC_KEY_LENGTH {
             return Err(SignatureError::new());
@@ -172,8 +190,8 @@ impl TryFrom<&[u8]> for VerifyingKey {
     }
 }
 
-#[cfg(test)]
-mod test {
+#[cfg(all(test, feature = "sha3"))]
+mod test_sha3 {
     use hex_literal::hex;
 
     use super::*;

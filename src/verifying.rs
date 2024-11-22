@@ -68,7 +68,7 @@ impl VerifyingKey {
         let compressed = CompressedEdwardsY(bytes);
         let point = compressed
             .decompress()
-            .ok_or_else(|| SignatureError::new())?;
+            .ok_or_else(SignatureError::new)?;
         Ok(VerifyingKey { compressed, point })
     }
 
@@ -170,20 +170,20 @@ impl VerifyingKey {
         // dom4(x, y) = "SigEd448" || octet(x) || octet(OLEN(y)) || y
         // where x = 0|1, and y = context
         h.update(b"SigEd448");
-        h.update(&[if prehashed { 1 } else { 0 }]);
+        h.update([if prehashed { 1 } else { 0 }]);
         if let Some(context) = context {
-            h.update(&[context.len() as u8]);
+            h.update([context.len() as u8]);
             h.update(context);
         } else {
-            h.update(&[0u8]);
+            h.update([0u8]);
         }
 
-        h.update(&R.0);
-        h.update(&A.0);
+        h.update(R.0);
+        h.update(A.0);
         h.update(M);
 
         let mut hash = [0u8; SIGNATURE_LENGTH];
-        hash.copy_from_slice(&h.finalize().as_slice());
+        hash.copy_from_slice(h.finalize().as_slice());
 
         Scalar::from_bytes_mod_order_wide(&hash)
     }

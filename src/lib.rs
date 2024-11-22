@@ -19,6 +19,8 @@
 //!   for [`VerifyingKey`] using [`sha3::Shake256`](https://docs.rs/sha3/latest/sha3/type.Shake256.html).
 //!   This feature is **enabled by default**.
 
+#![warn(missing_docs)]
+
 pub mod constants;
 pub mod digest;
 pub mod signature;

@@ -84,14 +84,14 @@ where
     }
 
     fn finalize_reset(&mut self) -> Output<Self> {
-        let xof = std::mem::replace(&mut self.xof, T::default());
+        let xof = std::mem::take(&mut self.xof);
         let mut output = Output::<Self>::default();
         xof.finalize_xof().read(output.as_mut());
         output
     }
 
     fn finalize_into_reset(&mut self, out: &mut Output<Self>) {
-        let xof = std::mem::replace(&mut self.xof, T::default());
+        let xof = std::mem::take(&mut self.xof);
         xof.finalize_xof().read(out.as_mut());
     }
 
@@ -272,7 +272,7 @@ mod test {
         // output size: 64 bytes
         let input = &hex!("e3ef127eadfafaf40408cebb28705df30b68d99dfa1893507ef3062d85461715");
         let output = hex!("7314002948c057006d4fc21e3e19c258fb5bdd57728fe93c9c6ef265b6d9f559ca73da32c427e135ba0db900d9003b19c9cf116f542a760418b1a435ac75ed5a");
-        let mut digest = Shake256U64::new_with_prefix(&hex!("012345"));
+        let mut digest = Shake256U64::new_with_prefix(hex!("012345"));
         Digest::reset(&mut digest);
         Digest::update(&mut digest, input);
         assert_eq!(digest.finalize().as_slice(), output);
@@ -280,7 +280,7 @@ mod test {
         // output size: 114 bytes
         let input = &hex!("dc886df3f69c49513de3627e9481db5871e8ee88eb9f99611541930a8bc885e0");
         let output = hex!("00648afbc5e651649db1fd82936b00dbbc122fb4c877860d385c4950d56de7e096d613d7a3f27ed8f26334b0ccc1407b41dccb23dfaa529818d1125cd5348092524366b85fabb97c6cd1e6066f459bcc566da87ec9b7ba36792d118ac39a4ccef6192bbf3a54af18e57b0c146101f6aeaa82");
-        let mut digest = Shake256U114::new_with_prefix(&hex!("012345"));
+        let mut digest = Shake256U114::new_with_prefix(hex!("012345"));
         Digest::reset(&mut digest);
         Digest::update(&mut digest, input);
         assert_eq!(digest.finalize().as_slice(), output);
@@ -291,7 +291,7 @@ mod test {
         // output size: 64 bytes
         let input = &hex!("e3ef127eadfafaf40408cebb28705df30b68d99dfa1893507ef3062d85461715");
         let expected_output = hex!("7314002948c057006d4fc21e3e19c258fb5bdd57728fe93c9c6ef265b6d9f559ca73da32c427e135ba0db900d9003b19c9cf116f542a760418b1a435ac75ed5a");
-        let mut digest = Shake256U64::new_with_prefix(&hex!("012345"));
+        let mut digest = Shake256U64::new_with_prefix(hex!("012345"));
         Digest::reset(&mut digest);
         Digest::update(&mut digest, input);
         let mut output = Output::<Shake256U64>::default();
@@ -301,7 +301,7 @@ mod test {
         // output size: 114 bytes
         let input = &hex!("dc886df3f69c49513de3627e9481db5871e8ee88eb9f99611541930a8bc885e0");
         let expected_output = hex!("00648afbc5e651649db1fd82936b00dbbc122fb4c877860d385c4950d56de7e096d613d7a3f27ed8f26334b0ccc1407b41dccb23dfaa529818d1125cd5348092524366b85fabb97c6cd1e6066f459bcc566da87ec9b7ba36792d118ac39a4ccef6192bbf3a54af18e57b0c146101f6aeaa82");
-        let mut digest = Shake256U114::new_with_prefix(&hex!("012345"));
+        let mut digest = Shake256U114::new_with_prefix(hex!("012345"));
         Digest::reset(&mut digest);
         Digest::update(&mut digest, input);
         let mut output = Output::<Shake256U114>::default();

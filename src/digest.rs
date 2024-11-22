@@ -7,20 +7,12 @@
 //! - [`Shake256U114`]: core hash function for Ed448
 //! - [`Shake256U64`]: function for prehash calculation for Ed448
 
-use digest::{
-    crypto_common::generic_array::ArrayLength,
-    Digest,
-    ExtendableOutput,
-    FixedOutput,
-    FixedOutputReset,
-    Output,
-    OutputSizeUser,
-    Reset,
-    Update,
-    XofReader,
-};
 #[cfg(feature = "sha3")]
 use digest::crypto_common::generic_array::typenum::{U114, U64};
+use digest::{
+    crypto_common::generic_array::ArrayLength, Digest, ExtendableOutput, FixedOutput,
+    FixedOutputReset, Output, OutputSizeUser, Reset, Update, XofReader,
+};
 use std::marker::PhantomData;
 
 /// Adapter for an extendable output function (XOF) to make it a
@@ -231,7 +223,10 @@ mod test {
         let input = &hex!("dc886df3f69c49513de3627e9481db5871e8ee88eb9f99611541930a8bc885e0");
         let output = hex!("00648afbc5e651649db1fd82936b00dbbc122fb4c877860d385c4950d56de7e096d613d7a3f27ed8f26334b0ccc1407b41dccb23dfaa529818d1125cd5348092524366b85fabb97c6cd1e6066f459bcc566da87ec9b7ba36792d118ac39a4ccef6192bbf3a54af18e57b0c146101f6aeaa82");
         assert_eq!(
-            Shake256U114::new().chain_update(input).finalize().as_slice(),
+            Shake256U114::new()
+                .chain_update(input)
+                .finalize()
+                .as_slice(),
             output,
         );
     }
@@ -241,12 +236,18 @@ mod test {
         // output size: 64 bytes
         let input = &hex!("e3ef127eadfafaf40408cebb28705df30b68d99dfa1893507ef3062d85461715");
         let output = hex!("7314002948c057006d4fc21e3e19c258fb5bdd57728fe93c9c6ef265b6d9f559ca73da32c427e135ba0db900d9003b19c9cf116f542a760418b1a435ac75ed5a");
-        assert_eq!(Shake256U64::new_with_prefix(input).finalize().as_slice(), output);
+        assert_eq!(
+            Shake256U64::new_with_prefix(input).finalize().as_slice(),
+            output
+        );
 
         // output size: 114 bytes
         let input = &hex!("dc886df3f69c49513de3627e9481db5871e8ee88eb9f99611541930a8bc885e0");
         let output = hex!("00648afbc5e651649db1fd82936b00dbbc122fb4c877860d385c4950d56de7e096d613d7a3f27ed8f26334b0ccc1407b41dccb23dfaa529818d1125cd5348092524366b85fabb97c6cd1e6066f459bcc566da87ec9b7ba36792d118ac39a4ccef6192bbf3a54af18e57b0c146101f6aeaa82");
-        assert_eq!(Shake256U114::new_with_prefix(input).finalize().as_slice(), output);
+        assert_eq!(
+            Shake256U114::new_with_prefix(input).finalize().as_slice(),
+            output
+        );
     }
 
     #[test]

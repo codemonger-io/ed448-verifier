@@ -11,10 +11,7 @@
 //! let signature = Signature::from_bytes(&signature_bytes).unwrap();
 //! ```
 
-use ed448_goldilocks::{
-    curve::edwards::CompressedEdwardsY,
-    Scalar,
-};
+use ed448_goldilocks::{curve::edwards::CompressedEdwardsY, Scalar};
 
 use crate::constants::SIGNATURE_LENGTH;
 

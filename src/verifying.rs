@@ -1,4 +1,21 @@
 //! Ed448 verifier.
+//!
+//! ## Example
+//!
+//! ```
+//! use ed448_verifier::{Signature, VerifyingKey};
+//! use hex_literal::hex;
+//! use signature::Verifier as _;
+//!
+//! // a test vector from RFC 8032
+//! let public_key_bytes = hex!("3ba16da0c6f2cc1f30187740756f5e798d6bc5fc015d7c63cc9510ee3fd44adc24d8e968b6e46e6f94d19b945361726bd75e149ef09817f580");
+//! let message = hex!("64a65f3cdedcdd66811e2915");
+//! let signature_bytes = hex!("7eeeab7c4e50fb799b418ee5e3197ff6bf15d43a14c34389b59dd1a7b1b85b4ae90438aca634bea45e3a2695f1270f07fdcdf7c62b8efeaf00b45c2c96ba457eb1a8bf075a3db28e5c24f6b923ed4ad747c3c9e03c7079efb87cb110d3a99861e72003cbae6d6b8b827e4e6c143064ff3c00");
+//!
+//! let public_key = VerifyingKey::from_bytes(&public_key_bytes).unwrap();
+//! let signature = Signature::from_bytes(&signature_bytes).unwrap();
+//! assert!(public_key.verify(&message, &signature).is_ok());
+//! ```
 
 use digest::{crypto_common::generic_array::typenum::U114, Digest};
 #[cfg(feature = "digest")]
@@ -27,13 +44,27 @@ use crate::signature::{Signature, SignatureError};
 /// - [`signature::DigestVerifier`](https://docs.rs/signature/latest/signature/trait.DigestVerifier.html):
 ///   if the "sha3" and "digest" features are
 ///   enabled.
+///
+/// ## Example
+///
+/// Please see the [`verifying`][crate::verifying] module.
 pub struct VerifyingKey {
     pub(crate) compressed: CompressedEdwardsY,
     pub(crate) point: ExtendedPoint,
 }
 
 impl VerifyingKey {
-    pub(crate) fn from_bytes(bytes: [u8; PUBLIC_KEY_LENGTH]) -> Result<Self, SignatureError> {
+    /// Constructs a verifying key from a given byte slice.
+    ///
+    /// Fails if `bytes` is not 57 bytes long, or if `bytes` does not represent
+    /// a valid point on the curve.
+    #[inline]
+    pub fn from_bytes(bytes: &[u8; PUBLIC_KEY_LENGTH]) -> Result<Self, SignatureError> {
+        Self::from_owned_bytes(*bytes)
+    }
+
+    #[inline]
+    pub(crate) fn from_owned_bytes(bytes: [u8; PUBLIC_KEY_LENGTH]) -> Result<Self, SignatureError> {
         let compressed = CompressedEdwardsY(bytes);
         let point = compressed
             .decompress()
@@ -181,12 +212,63 @@ impl TryFrom<&[u8]> for VerifyingKey {
 
     #[inline]
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        if bytes.len() != PUBLIC_KEY_LENGTH {
-            return Err(SignatureError::new());
-        }
-        let mut underlying = [0u8; PUBLIC_KEY_LENGTH];
-        underlying.copy_from_slice(bytes);
-        Self::from_bytes(underlying)
+        let bytes = bytes.try_into().map_err(|_| SignatureError::new())?;
+        Self::from_owned_bytes(bytes)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use hex_literal::hex;
+
+    use super::*;
+
+    // test vectors are taken from
+    // https://datatracker.ietf.org/doc/html/rfc8032#section-7.4
+
+    #[test]
+    fn from_bytes() {
+        assert!(VerifyingKey::from_bytes(&hex!("
+            5fd7449b59b461fd2ce787ec616ad46a
+            1da1342485a70e1f8a0ea75d80e96778
+            edf124769b46c7061bd6783df1e50f6c
+            d1fa1abeafe8256180
+        ")).is_ok()); // TODO: check the point
+
+        // obviously y > p = 2^448 - 2^224 - 1
+        assert!(VerifyingKey::from_bytes(&hex!("
+            ffffffffffffffffffffffffffffffff
+            ffffffffffffffffffffffffffffffff
+            ffffffffffffffffffffffffffffffff
+            ffffffffffffffff80
+        ")).is_err());
+
+        // TODO: case where y < p but x^2 has no root
+    }
+
+    #[test]
+    fn try_from_u8_slice() {
+        assert!(VerifyingKey::try_from(&hex!("
+            5fd7449b59b461fd2ce787ec616ad46a
+            1da1342485a70e1f8a0ea75d80e96778
+            edf124769b46c7061bd6783df1e50f6c
+            d1fa1abeafe8256180
+        ") as &[u8]).is_ok()); // TODO: check the point
+
+        // too short
+        assert!(VerifyingKey::try_from(&hex!("
+            5fd7449b59b461fd2ce787ec616ad46a
+            1da1342485a70e1f8a0ea75d80e96778
+            edf124769b46c7061bd6783df1e50f6c
+            d1fa1abeafe82580
+        ") as &[u8]).is_err());
+        // too long
+        assert!(VerifyingKey::try_from(&hex!("
+            5fd7449b59b461fd2ce787ec616ad46a
+            1da1342485a70e1f8a0ea75d80e96778
+            edf124769b46c7061bd6783df1e50f6c
+            d1fa1abeafe825618000
+        ") as &[u8]).is_err());
     }
 }
 
@@ -200,9 +282,8 @@ mod test_sha3 {
     // https://datatracker.ietf.org/doc/html/rfc8032#section-7.4
 
     #[test]
-    #[allow(non_snake_case)]
     fn raw_verify_blank() {
-        let public_key = VerifyingKey::from_bytes(hex!("
+        let public_key = VerifyingKey::from_bytes(&hex!("
             5fd7449b59b461fd2ce787ec616ad46a
             1da1342485a70e1f8a0ea75d80e96778
             edf124769b46c7061bd6783df1e50f6c
@@ -221,11 +302,33 @@ mod test_sha3 {
             2600
         ")).unwrap();
         assert!(public_key.raw_verify::<Shake256U114>(context, &message, &signature).is_ok());
+
+        // bad public key
+        let bad_public_key = VerifyingKey::from_bytes(&hex!("
+            43ba28f430cdff456ae531545f7ecd0a
+            c834a55d9358c0372bfa0c6c6798c086
+            6aea01eb00742802b8438ea4cb82169c
+            235160627b4c3a9480
+        ")).unwrap();
+        assert!(bad_public_key.raw_verify::<Shake256U114>(context, &message, &signature).is_err());
+
+        // bad signature
+        let bad_signature = Signature::from_bytes(&hex!("
+            26b8f91727bd62897af15e41eb43c377
+            efb9c610d48f2335cb0bd0087810f435
+            2541b143c4b981b7e18f62de8ccdf633
+            fc1bf037ab7cd779805e0dbcc0aae1cb
+            cee1afb2e027df36bc04dcecbf154336
+            c19f0af7e0a6472905e799f1953d2a0f
+            f3348ab21aa4adafd1d234441cf807c0
+            3a00
+        ")).unwrap();
+        assert!(public_key.raw_verify::<Shake256U114>(context, &message, &bad_signature).is_err());
     }
 
     #[test]
     fn raw_verify_1_octet() {
-        let public_key = VerifyingKey::from_bytes(hex!("
+        let public_key = VerifyingKey::from_bytes(&hex!("
             43ba28f430cdff456ae531545f7ecd0a
             c834a55d9358c0372bfa0c6c6798c086
             6aea01eb00742802b8438ea4cb82169c
@@ -244,17 +347,43 @@ mod test_sha3 {
             3a00
         ")).unwrap();
         assert!(public_key.raw_verify::<Shake256U114>(context, &message, &signature).is_ok());
+
+        // bad public key
+        let bad_public_key = VerifyingKey::from_bytes(&hex!("
+            5fd7449b59b461fd2ce787ec616ad46a
+            1da1342485a70e1f8a0ea75d80e96778
+            edf124769b46c7061bd6783df1e50f6c
+            d1fa1abeafe8256180
+        ")).unwrap();
+        assert!(bad_public_key.raw_verify::<Shake256U114>(context, &message, &signature).is_err());
+
+        // bad message
+        let bad_message = hex!("04");
+        assert!(public_key.raw_verify::<Shake256U114>(context, &bad_message, &signature).is_err());
+
+        // bad signature
+        let bad_signature = Signature::from_bytes(&hex!("
+            d4f8f6131770dd46f40867d6fd5d5055
+            de43541f8c5e35abbcd001b32a89f7d2
+            151f7647f11d8ca2ae279fb842d60721
+            7fce6e042f6815ea000c85741de5c8da
+            1144a6a1aba7f96de42505d7a7298524
+            fda538fccbbb754f578c1cad10d54d0d
+            5428407e85dcbc98a49155c13764e66c
+            3c00
+        ")).unwrap();
+        assert!(public_key.raw_verify::<Shake256U114>(context, &message, &bad_signature).is_err());
     }
 
     #[test]
     fn raw_verify_1_octet_with_context() {
-        let public_key = VerifyingKey::from_bytes(hex!("
+        let public_key = VerifyingKey::from_bytes(&hex!("
             43ba28f430cdff456ae531545f7ecd0a
             c834a55d9358c0372bfa0c6c6798c086
             6aea01eb00742802b8438ea4cb82169c
             235160627b4c3a9480
         ")).unwrap();
-        let context = Some(&hex!("666f6f")[..]);
+        let context: Option<&[u8]> = Some(&hex!("666f6f"));
         let message = hex!("03");
         let signature = Signature::from_bytes(&hex!("
             d4f8f6131770dd46f40867d6fd5d5055
@@ -267,11 +396,15 @@ mod test_sha3 {
             3c00
         ")).unwrap();
         assert!(public_key.raw_verify::<Shake256U114>(context, &message, &signature).is_ok());
+
+        // bad context
+        let bad_context: Option<&[u8]> = Some(&hex!("666f6e"));
+        assert!(public_key.raw_verify::<Shake256U114>(bad_context, &message, &signature).is_err());
     }
 
     #[test]
     fn raw_verify_11_octets() {
-        let public_key = VerifyingKey::from_bytes(hex!("
+        let public_key = VerifyingKey::from_bytes(&hex!("
             dcea9e78f35a1bf3499a831b10b86c90
             aac01cd84b67a0109b55a36e9328b1e3
             65fce161d71ce7131a543ea4cb5f7e9f
@@ -294,7 +427,7 @@ mod test_sha3 {
 
     #[test]
     fn raw_verify_12_octets() {
-        let public_key = VerifyingKey::from_bytes(hex!("
+        let public_key = VerifyingKey::from_bytes(&hex!("
             3ba16da0c6f2cc1f30187740756f5e79
             8d6bc5fc015d7c63cc9510ee3fd44adc
             24d8e968b6e46e6f94d19b945361726b
@@ -317,7 +450,7 @@ mod test_sha3 {
 
     #[test]
     fn raw_verify_13_octets() {
-        let public_key = VerifyingKey::from_bytes(hex!("
+        let public_key = VerifyingKey::from_bytes(&hex!("
             b3da079b0aa493a5772029f0467baebe
             e5a8112d9d3a22532361da294f7bb381
             5c5dc59e176b4d9f381ca0938e13c6c0
@@ -340,7 +473,7 @@ mod test_sha3 {
 
     #[test]
     fn raw_verify_64_octets() {
-        let public_key = VerifyingKey::from_bytes(hex!("
+        let public_key = VerifyingKey::from_bytes(&hex!("
             df9705f58edbab802c7f8363cfe5560a
             b1c6132c20a9f1dd163483a26f8ac53a
             39d6808bf4a1dfbd261b099bb03b3fb5
@@ -368,7 +501,7 @@ mod test_sha3 {
 
     #[test]
     fn raw_verify_256_octets() {
-        let public_key = VerifyingKey::from_bytes(hex!("
+        let public_key = VerifyingKey::from_bytes(&hex!("
             79756f014dcfe2079f5dd9e718be4171
             e2ef2486a08f25186f6bff43a9936b9b
             fe12402b08ae65798a3d81e22e9ec80e
@@ -408,7 +541,7 @@ mod test_sha3 {
 
     #[test]
     fn raw_verify_1023_octets() {
-        let public_key = VerifyingKey::from_bytes(hex!("
+        let public_key = VerifyingKey::from_bytes(&hex!("
             a81b2e8a70a5ac94ffdbcc9badfc3feb
             0801f258578bb114ad44ece1ec0e799d
             a08effb81c5d685c0c56f64eecaef8cd
@@ -497,7 +630,7 @@ mod test_sha3 {
     #[cfg(feature = "digest")]
     #[test]
     fn raw_verify_prehashed_abc() {
-        let public_key = VerifyingKey::from_bytes(hex!("
+        let public_key = VerifyingKey::from_bytes(&hex!("
             259b71c19f83ef77a7abd26524cbdb31
             61b590a48f7d17de3ee0ba9c52beb743
             c09428a131d6b1b57303d90d8132c276
@@ -520,18 +653,56 @@ mod test_sha3 {
             Shake256U64::new_with_prefix(&message),
             &signature,
         ).is_ok());
+
+        // bad public key
+        let bad_public_key = VerifyingKey::from_bytes(&hex!("
+            a81b2e8a70a5ac94ffdbcc9badfc3feb
+            0801f258578bb114ad44ece1ec0e799d
+            a08effb81c5d685c0c56f64eecaef8cd
+            f11cc38737838cf400
+        ")).unwrap();
+        assert!(bad_public_key.raw_verify_prehashed::<Shake256U114, _>(
+            context,
+            Shake256U64::new_with_prefix(&message),
+            &signature,
+        ).is_err());
+
+        // bad message
+        let bad_message = hex!("616264");
+        assert!(public_key.raw_verify_prehashed::<Shake256U114, _>(
+            context,
+            Shake256U64::new_with_prefix(&bad_message),
+            &signature,
+        ).is_err());
+
+        // bad signature
+        let bad_signature = Signature::from_bytes(&hex!("
+            c32299d46ec8ff02b54540982814dce9
+            a05812f81962b649d528095916a2aa48
+            1065b1580423ef927ecf0af5888f90da
+            0f6a9a85ad5dc3f280d91224ba9911a3
+            653d00e484e2ce232521481c8658df30
+            4bb7745a73514cdb9bf3e15784ab7128
+            4f8d0704a608c54a6b62d97beb511d13
+            2100
+        ")).unwrap();
+        assert!(public_key.raw_verify_prehashed::<Shake256U114, _>(
+            context,
+            Shake256U64::new_with_prefix(&message),
+            &bad_signature,
+        ).is_err());
     }
 
     #[cfg(feature = "digest")]
     #[test]
     fn raw_verify_prehashed_abc_with_context() {
-        let public_key = VerifyingKey::from_bytes(hex!("
+        let public_key = VerifyingKey::from_bytes(&hex!("
             259b71c19f83ef77a7abd26524cbdb31
             61b590a48f7d17de3ee0ba9c52beb743
             c09428a131d6b1b57303d90d8132c276
             d5ed3d5d01c0f53880
         ")).unwrap();
-        let context = Some(&hex!("666f6f")[..]);
+        let context: Option<&[u8]> = Some(&hex!("666f6f"));
         let message = hex!("616263");
         let signature = Signature::from_bytes(&hex!("
             c32299d46ec8ff02b54540982814dce9
@@ -548,5 +719,13 @@ mod test_sha3 {
             Shake256U64::new_with_prefix(&message),
             &signature,
         ).is_ok());
+
+        // bad context
+        let bad_context: Option<&[u8]> = Some(&hex!("666f6e"));
+        assert!(public_key.raw_verify_prehashed::<Shake256U114, _>(
+            bad_context,
+            Shake256U64::new_with_prefix(&message),
+            &signature,
+        ).is_err());
     }
 }

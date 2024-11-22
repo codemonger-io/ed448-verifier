@@ -54,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "ed448-verifier"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "digest",
  "ed448-goldilocks",

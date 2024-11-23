@@ -1,4 +1,4 @@
-//! A naïve implementation of Ed448 verifier.
+//! An implementation of Ed448 verifier.
 //!
 //! ## Introduction
 //!

@@ -8,6 +8,7 @@ license = "MIT"
 keywords = ["ed448"]
 homepage = "https://github.com/codemonger-io/ed448-verifier"
 repository = "https://github.com/codemonger-io/ed448-verifier"
+documentation = "https://codemonger-io.github.io/ed448-verifier/ed448_verifier/index.html"
 
 [features]
 default = ["sha3"]
